@@ -10,7 +10,11 @@ struct ContentView: View {
     @State private var template: WritingTemplate = .all[0]
     @State private var tone: Tone = .professional
     @State private var topic = ""
-    @State private var draft = ""
+
+    // Variable reward per ../PLAYBOOK.md: three tone variants revealed one at a
+    // time as flip cards — anticipation, not loss aversion. No persistence.
+    @State private var drafts: [ToneDraft] = []
+    @State private var revealedCount = 0
 
     var body: some View {
         NavigationStack {
@@ -35,15 +39,16 @@ struct ContentView: View {
                     }
                     .buttonStyle(.borderedProminent).tint(.blue)
 
-                    if !draft.isEmpty {
-                        Text(draft)
-                            .frame(maxWidth: .infinity, alignment: .leading)
-                            .padding().background(RoundedRectangle(cornerRadius: 12).fill(.quaternary.opacity(0.5)))
-                            .textSelection(.enabled)
-                        HStack {
-                            Button { UIPasteboard.general.string = draft } label: {
-                                Label("Copy", systemImage: "doc.on.doc").frame(maxWidth: .infinity, minHeight: 46)
-                            }.buttonStyle(.bordered)
+                    if !drafts.isEmpty {
+                        Text("Three takes — tap each card to reveal").font(.headline)
+                        ForEach(Array(drafts.enumerated()), id: \.element.id) { index, d in
+                            if index <= revealedCount {
+                                DraftCard(draft: d, isRevealed: index < revealedCount) {
+                                    reveal(index)
+                                }
+                            }
+                        }
+                        if revealedCount == drafts.count {
                             Button { factory.requirePremium(feature: "ai_rewrite") {} } label: {
                                 Label("AI Rewrite (Pro)", systemImage: "wand.and.stars").frame(maxWidth: .infinity, minHeight: 46)
                             }.buttonStyle(.borderedProminent).tint(.blue)
@@ -82,7 +87,66 @@ struct ContentView: View {
         template = t
     }
 
+    /// Chosen tone first, then two other tones — three takes on the same draft.
     private func generate() {
-        draft = DraftComposer.compose(template: template, topic: topic, tone: tone)
+        let tones = [tone] + Tone.allCases.filter { $0 != tone }.prefix(2)
+        drafts = tones.map {
+            ToneDraft(tone: $0, text: DraftComposer.compose(template: template, topic: topic, tone: $0))
+        }
+        revealedCount = 0
+    }
+
+    private func reveal(_ index: Int) {
+        guard index == revealedCount else { return }
+        UIImpactFeedbackGenerator(style: .light).impactOccurred()
+        withAnimation(.spring(duration: 0.45)) { revealedCount = index + 1 }
+    }
+}
+
+struct ToneDraft: Identifiable {
+    let tone: Tone
+    let text: String
+    var id: String { tone.id }
+}
+
+/// Face-down card that flips to the draft on tap (reveal pattern per
+/// ../PLAYBOOK.md; see AffirmationsManifestation's AffirmCardsView).
+struct DraftCard: View {
+    let draft: ToneDraft
+    let isRevealed: Bool
+    let onReveal: () -> Void
+
+    var body: some View {
+        Button(action: onReveal) {
+            ZStack {
+                RoundedRectangle(cornerRadius: 12)
+                    .fill(isRevealed ? AnyShapeStyle(.quaternary.opacity(0.5)) : AnyShapeStyle(.blue.opacity(0.12)))
+                if isRevealed {
+                    VStack(alignment: .leading, spacing: 10) {
+                        HStack {
+                            Text(draft.tone.rawValue).font(.subheadline.bold()).foregroundStyle(.blue)
+                            Spacer()
+                            Button { UIPasteboard.general.string = draft.text } label: {
+                                Image(systemName: "doc.on.doc")
+                            }
+                            .buttonStyle(.borderless)
+                        }
+                        Text(draft.text)
+                            .frame(maxWidth: .infinity, alignment: .leading)
+                            .textSelection(.enabled)
+                    }
+                    .padding()
+                    .transition(.scale.combined(with: .opacity))
+                } else {
+                    Label("Tap to reveal the \(draft.tone.rawValue.lowercased()) take", systemImage: "hand.tap")
+                        .font(.callout)
+                        .foregroundStyle(.blue)
+                        .frame(minHeight: 72)
+                }
+            }
+        }
+        .buttonStyle(.plain)
+        .disabled(isRevealed)
+        .animation(.spring(duration: 0.45), value: isRevealed)
     }
 }

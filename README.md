@@ -9,6 +9,12 @@ Generated from niche `ai-writing` (AI Text, tier A, score 77).
 
 > Pure LLM wrapper, cheap to build. Niche it (cold email, dating, reviews) to stand out.
 
+## Engagement (see ../PLAYBOOK.md)
+
+Variable reward: each generation produces three tone variants of the draft,
+revealed one at a time as flip cards (light haptic per reveal, next card appears
+after the previous is revealed). No persistence.
+
 ## Build it
 
 ```bash
